@@ -5,8 +5,8 @@ from datetime import datetime, timedelta
 # Connection Settings
 conn_str = (
     "Driver={SQL Server};"
-    "Server=Kelsey;" 
-    "Database=AIDA2157_Final_Project;"
+    "Server=Kelsey;" # Change to your server name if different
+    "Database=AIDA2157_Final_Project;" # Change to your database name if different
     "Trusted_Connection=yes;"
 )
 
