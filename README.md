@@ -9,10 +9,10 @@ A machine learning system that predicts, monitors, and responds to wildfire thre
 
 | File | Description |
 |---|---|
-| `AIDA_2157_-_Final_Project_-_SQL_Script.sql` | Initializes the full MS SQL database (10 tables, foreign keys) |
-| `AIDA_2157_-_Final_Project_-_Create_View.sql` | Creates the `vw_Final_AI_Predictions` summary view |
-| `AIDA_2157_-_Final_Project_-_View.sql` | Query to read the predictions view |
-| `AIDA_2157_-_Final_Project_-_Row_Count.sql` | Validates record counts across key tables |
+| `Step 1 - Create Tables.sql` | Initializes the full MS SQL database (10 tables, foreign keys) |
+| `Step 2 - Row Count.sql` | Validates record counts across key tables |
+| `Step 3 - Create View.sql` | Creates the `vw_Final_AI_Predictions` summary view |
+| `Step 4 - View.sql` | Query to read the predictions view |
 | `data_generator.py` | Generates 1,000 synthetic Alberta wildfire incident records |
 | `main_engine.py` | Runs all 10 AI models and prints the Emergency Briefing |
 | `AIDA_2157_-_Final_Project_-_Logic.pdf` | Technical summary covering model comparison, ethics, and reliability |
