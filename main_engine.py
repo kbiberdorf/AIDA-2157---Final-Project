@@ -8,18 +8,26 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.metrics import mean_absolute_error
 
 # Connection
-conn_str = ("Driver={SQL Server};Server=Kelsey;Database=AIDA2157_Final_Project;Trusted_Connection=yes;")
+conn_str = (
+    "Driver={SQL Server};"
+    "Server=Kelsey;" # Change to your server name if different
+    "Database=AIDA2157_Final_Project;" # Change to your database name if different
+    "Trusted_Connection=yes;"
+)
 conn = pyodbc.connect(conn_str)
 
+# Run the AI Engine to train models and generate predictions
 def run_ai_engine():
     print("="*75 + "\n")
     print("--- ALBERTA WILDFIRE AI ENGINE STARTING ---")
     cursor = conn.cursor()
     
+    # Clear old predictions to avoid confusion
     print("\nClearing old prediction logs...\n")
     cursor.execute("DELETE FROM Prediction_Archive")
     conn.commit()
     
+    # Define the 10 use cases with their corresponding model types and features
     use_cases = [
         {"db_keyword": "Ignition", "name": "Ignition Predictor", "type": "RF_Class", "target": "Is_Ignited", "features": ["Intensity_kA", "Soil_Moisture"]},
         {"db_keyword": "Size", "name": "Fire Size", "type": "RF_Class", "target": "Is_Major", "features": ["Temperature", "Humidity", "Wind_Speed", "Slope_Steepness"]},
@@ -33,12 +41,15 @@ def run_ai_engine():
         {"db_keyword": "Infrastructure", "name": "Infrastructure", "type": "RF_Class", "target": "Clearance_Required", "features": ["Risk_Level_Score", "Slope_Steepness"]}
     ]
 
+    # Process each use case
     for uc in use_cases:
+        # Fetch the corresponding Model_ID for updating accuracy later
         cursor.execute("SELECT Model_ID FROM Model_Metadata WHERE Model_Name LIKE ?", (f"%{uc['db_keyword']}%",))
-        row = cursor.fetchone()
-        if not row: continue
-        db_model_id = int(row[0])
+        row = cursor.fetchone() # If no model found, skip this use case
+        if not row: continue # This should not happen as the models are pre-populated, but just in case of mismatch, skip to avoid errors.
+        db_model_id = int(row[0]) # Ensure it's an integer for later use in updates
 
+        # Fetch the joined data for this use case
         query = """
         SELECT f.*, t.*, w.*, l.Intensity_kA, c.Is_Real_Fire, i.Risk_Level_Score,
                DATEDIFF(day, f.Start_Date, f.Containment_Date) as Days
@@ -50,30 +61,32 @@ def run_ai_engine():
         LEFT JOIN Community_Infrastructure i ON i.Infra_ID = f.Fire_ID
         """
         
+        # Suppress warnings for missing columns during the join, they will be handled in the logic mapping step
         with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            df = pd.read_sql(query, conn)
+            warnings.simplefilter("ignore") # This is to ignore warnings about missing columns like 'Intensity_kA' or 'Is_Real_Fire' which may not be present for all records due to the LEFT JOINs.
+            df = pd.read_sql(query, conn) # This will create a DataFrame with all the joined data, but some columns may have NaNs due to the LEFT JOINs.
 
-        if df["Intensity_kA"].isna().mean() > 0.5:
-            df['Intensity_kA'] = np.random.uniform(10, 160, size = len(df))
+        # Handle missing columns by filling with NaNs or default values, the logic mapping will account for these cases.
+        if df["Intensity_kA"].isna().mean() > 0.5: # If more than 50% of the data is missing for this feature, it'll generate synthetic values based on a reasonable distribution for the sake of model training.
+            df['Intensity_kA'] = np.random.uniform(10, 160, size = len(df)) # Wildfire intensity in kiloamperes, a common range for lightning strikes that can cause ignitions.
 
         # --- ROBUST LOGIC MAPPING ---
         
-        # 1. False Alarm: If the joined data is missing, we'll pull from the source
+        # 1. False Alarm: If the joined data is missing, it'll pull from the source
         # or use a broader logical check to ensure variety.
         if uc['db_keyword'] == "Alarm": 
-            # If the join failed (all 0s), we'll force variety based on Temperature
-            df['Is_Real_Fire'] = [1 if (t > 25 or h < 30) else np.random.choice([0,1]) 
-                                  for t, h in zip(df['Temperature'], df['Humidity'])]
+            # If the join failed (all 0s), it'll force variety based on Temperature
+            df['Is_Real_Fire'] = [1 if (t > 25 or h < 30) else np.random.choice([0,1])
+                                  for t, h in zip(df['Temperature'], df['Humidity'])] # This logic assumes that higher temperatures and lower humidity are more likely to be real fires, but still allows for some randomness to ensure the model has both classes to learn from.
             
-        # 2. Infrastructure: If the join is empty, we'll base it on the Fire Size 
+        # 2. Infrastructure: If the join is empty, it'll base it on the Fire Size 
         # threatening the Infrastructure Priority (Risk_Level_Score)
         if uc['db_keyword'] == "Infrastructure": 
-            df['Clearance_Required'] = [1 if (s > 500 or r > 5) else 0 
-                                        for s, r in zip(df['Final_Size_Hectares'], df['Risk_Level_Score'].fillna(0))]
+            df['Clearance_Required'] = [1 if (s > 500 or r > 5) else 0  
+                                        for s, r in zip(df['Final_Size_Hectares'], df['Risk_Level_Score'].fillna(0))] 
 
         # 3. Standard Logic for the others
-        if uc['db_keyword'] == "Ignition": df['Is_Ignited'] = [1 if x > 60 else 0 for x in df['Intensity_kA'].fillna(0)]
+        if uc['db_keyword'] == "Ignition": df['Is_Ignited'] = [1 if x > 60 else 0 for x in df['Intensity_kA'].fillna(0)] 
         if uc['db_keyword'] == "Size": df['Is_Major'] = [1 if x > 1000 else 0 for x in df['Final_Size_Hectares']]
         if uc['db_keyword'] == "AQI": df['AQI'] = (df['Temperature'] * 1.2) + (df['Final_Size_Hectares'] * 0.005)
         if uc['db_keyword'] == "Evacuation": df['Evac_Required'] = [1 if x > 1200 else 0 for x in df['Final_Size_Hectares']]
@@ -81,6 +94,8 @@ def run_ai_engine():
         if uc['db_keyword'] == "Landslide": df['Slide_Risk'] = [1 if s > 20 else 0 for s in df['Slope_Steepness']]
         if uc['db_keyword'] == "Dispatch": df['Dispatch_Needed'] = [1 if i > 40 else 0 for i in df['Intensity_kA'].fillna(0)]
         
+        # Prepare features and target for model training, ensuring that if the target variable is missing, 
+        # it defaults to a value that allows the model to train without errors, while still providing meaningful patterns to learn from.
         X = df[uc['features']].fillna(0)
         if uc['type'] != "RF_Reg":
             y = df[uc['target']].fillna(0).astype(int)
@@ -88,10 +103,13 @@ def run_ai_engine():
                 print(f"Skipping {uc['name']}: Not enough variety.")
                 continue
         else:
-            y = df[uc['target']].fillna(0)
+            y = df[uc['target']].fillna(0) 
 
+        # Split the data into training and testing sets
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
+        # Train the model based on the specified type and evaluate its performance, 
+        # then update the database with the new accuracy score and a sample prediction for demonstration.
         if uc['type'] == "Log_Reg":
             model = LogisticRegression(solver='lbfgs', max_iter=5000, class_weight='balanced').fit(X_train, y_train)
             score = model.score(X_test, y_test); metric = "Accuracy"
@@ -102,24 +120,31 @@ def run_ai_engine():
             model = RandomForestRegressor(n_estimators=50).fit(X_train, y_train)
             score = mean_absolute_error(y_test, model.predict(X_test)); metric = "Avg Error"
 
+        # Update the Model_Metadata with the new accuracy score and log a sample prediction in Prediction_Archive
         cursor.execute("UPDATE Model_Metadata SET Accuracy_Score = ?, Last_Trained_Date = GETDATE() WHERE Model_ID = ?", (float(score), db_model_id))
         sample_pred = float(model.predict(X_test[:1])[0])
         cursor.execute("INSERT INTO Prediction_Archive (Model_ID, Prediction_Timestamp, Predicted_Value) VALUES (?, GETDATE(), ?)", (db_model_id, sample_pred))
         print(f"Success: {uc['name']} | {metric}: {score:.4f}")
-        
+
+    # Final commit after processing all models    
     conn.commit()
     print("\n--- ALL 10 ALBERTA MODELS PROCESSED ---")
 
 run_ai_engine()
 
+# Generate a sample emergency briefing based on the latest predictions and current conditions in the database, 
+# simulating a real-time briefing for emergency management teams.
 def generate_emergency_briefing():
     print("\n" + "="*75)
     print("  PROVINCIAL EMERGENCY MANAGEMENT BRIEFING")
     print("  Location: Alberta, Canada | AI Status: Active")
     print("="*75)
 
+    # Fetch the latest prediction and current conditions for a random incident to create a briefing scenario. 
+    # This simulates the AI engine providing actionable insights based on the most recent data and model outputs
     cursor = conn.cursor()
     
+    # For demonstration, fetch a random incident and its associated data, then map the latest predictions to the briefing format.
     cursor.execute("""
         SELECT TOP 1 f.Fire_ID, t.Latitude, t.Longitude, w.Temperature, w.Wind_Speed, m.Accuracy_Score
         FROM Fire_History f
@@ -128,8 +153,10 @@ def generate_emergency_briefing():
         JOIN Model_Metadata m ON m.Model_Name LIKE '%Ignition%'
         ORDER BY NEWID()
     """)
-    row = cursor.fetchone()
-    
+    row = cursor.fetchone() # This will fetch a random fire incident along with its location, current temperature, wind speed, and the accuracy score of the Ignition Predictor model for demonstration purposes.
+
+    # If a row is returned, it will proceed to map the predictions to the briefing format. 
+    # If no data is available, it will simply print that no incidents are currently detected.    
     if row:
         f_id, lat, lon, temp, wind, acc = row
         
@@ -169,4 +196,5 @@ def generate_emergency_briefing():
 
 generate_emergency_briefing()
 
+# Close the database connection after all operations are complete
 conn.close()
