@@ -10,6 +10,8 @@ conn_str = (
     "Trusted_Connection=yes;"
 )
 
+# This function will populate the Alberta provincial data with a balanced mix of major and minor fire incidents, 
+# as well as real and false alarms, to ensure robust model training.
 def populate_alberta_balanced_data(n=1000):
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
