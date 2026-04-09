@@ -9,13 +9,14 @@ A machine learning system that predicts, monitors, and responds to wildfire thre
 
 | File | Description |
 |---|---|
-| `Step 1 - Create Tables.sql` | Initializes the full MS SQL database (10 tables, foreign keys) |
-| `Step 2 - Row Count.sql` | Validates record counts across key tables |
-| `Step 3 - Create View.sql` | Creates the `vw_Final_AI_Predictions` summary view |
-| `Step 4 - View.sql` | Query to read the predictions view |
+| `Step_1_-_Create_Tables.sql` | Initializes the full MS SQL database (10 tables, foreign keys) |
+| `Step_2_-_Row_Count.sql` | Validates record counts across key tables |
+| `Step_3_-_Create_View.sql` | Creates the `vw_Final_AI_Predictions` summary view |
+| `Step_4_-_View.sql` | Query to read the predictions view |
 | `data_generator.py` | Generates 1,000 synthetic Alberta wildfire incident records |
 | `main_engine.py` | Runs all 10 AI models and prints the Emergency Briefing |
-| `AIDA_2157_-_Final_Project_-_Logic.pdf` | Technical summary covering model comparison, ethics, and reliability |
+| `dummy_main_engine.py` | Offline fallback version — auto-detects SQL connection and runs on synthetic data if the server is unavailable |
+| `Logic_and_Ethics_Questions.pdf` | Technical summary covering model comparison, ethics, and reliability |
 
 ---
 
@@ -67,8 +68,8 @@ pip install pyodbc pandas numpy scikit-learn
 ### Step 1 — Initialize the Database
 Open MS SQL Server Management Studio and run:
 ```
-AIDA_2157_-_Final_Project_-_SQL_Script.sql
-AIDA_2157_-_Final_Project_-_Create_View.sql
+Step_1_-_Create_Tables.sql
+Step_3_-_Create_View.sql
 ```
 
 ### Step 2 — Update the Connection String
@@ -88,52 +89,59 @@ This populates all 10 tables with 1,000 realistic Alberta wildfire incident scen
 python main_engine.py
 ```
 
+### No SQL Server? Use the Offline Fallback
+If you don't have access to a local SQL Server instance, run the dummy engine instead:
+```bash
+python dummy_main_engine.py
+```
+It automatically detects whether the database connection succeeds. If it fails, the engine switches to offline demo mode and generates synthetic data internally — no manual configuration required. All 10 models still train and the Emergency Briefing still prints.
+
 ---
 
 ## 🖥️ Sample Console Output
 
 ```
 --- ALBERTA WILDFIRE AI ENGINE STARTING ---
-Success: Ignition Predictor  | Accuracy: 0.9150
-Success: Fire Size            | Accuracy: 0.9300
-Success: False Alarm          | Accuracy: 0.8750
-Success: Containment          | Avg Error: 3.2100
-Success: Smoke AQI            | Avg Error: 12.4500
-Success: Evacuation           | Accuracy: 0.9200
-Success: Road Closure         | Accuracy: 0.9400
-Success: Landslide            | Accuracy: 0.8900
-Success: Dispatch             | Accuracy: 0.9050
-Success: Infrastructure       | Accuracy: 0.8800
+Success: Ignition Predictor       | Accuracy: 0.9150
+Success: Fire Size                | Accuracy: 0.9300
+Success: False Alarm              | Accuracy: 0.8750
+Success: Containment              | Avg Error: 3.2100
+Success: Smoke AQI                | Avg Error: 12.4500
+Success: Evacuation               | Accuracy: 0.9200
+Success: Road Closure             | Accuracy: 0.9400
+Success: Landslide                | Accuracy: 0.8900
+Success: Dispatch                 | Accuracy: 0.9050
+Success: Infrastructure           | Accuracy: 0.8800
 --- ALL 10 ALBERTA MODELS PROCESSED ---
 
-==================================================
+===========================================================================
   PROVINCIAL EMERGENCY MANAGEMENT BRIEFING
   Location: Alberta, Canada | AI Status: Active
-==================================================
+===========================================================================
 CRITICAL INCIDENT DETECTED AT: [53.4821, -114.9023]
-Current Conditions:   38.2°C | Wind:   72.4 km/h
---------------------------------------------------
- [1] IGNITION PROBABILITY:     HIGH (Model Accuracy: 91.50%)
- [2] FIRE SIZE FORECAST:        MAJOR
- [3] 911 CALL ASSESSMENT:       REAL FIRE
- [4] CONTAINMENT ESTIMATE:      12.5 Days
- [5] SMOKE AQI FORECAST:        187.3 AQI
- [6] EVACUATION STATUS:         REQUIRED
- [7] ROAD CLOSURE STATUS:       CLOSE ROADS
- [8] LANDSLIDE RISK (Post-Fire): HIGH RISK
- [9] AIR TANKER DISPATCH:       DISPATCH NOW
-[10] INFRASTRUCTURE PRIORITY:   CLEAR VEGETATION
---------------------------------------------------
+Current Conditions - Temperature:   38.2°C | Wind:   72.4 km/h
+---------------------------------------------------------------------------
+ [1] IGNITION PROBABILITY:        HIGH (Model Accuracy: 91.50%)
+ [2] FIRE SIZE FORECAST:          MAJOR
+ [3] 911 CALL ASSESSMENT:         REAL FIRE
+ [4] CONTAINMENT ESTIMATE:        12.5 Days
+ [5] SMOKE AQI FORECAST:          187.3 AQI
+ [6] EVACUATION STATUS:           REQUIRED
+ [7] ROAD CLOSURE STATUS:         CLOSE ROADS
+ [8] LANDSLIDE RISK (Post-Fire):  HIGH RISK
+ [9] AIR TANKER DISPATCH:         DISPATCH NOW
+[10] INFRASTRUCTURE PRIORITY:     CLEAR VEGETATION
+---------------------------------------------------------------------------
 ACTION PLAN: DISPATCH AIR TANKER & EVACUATE
 Briefing Status: CONFIRMED - Data sent to Alberta Emergency Operations.
-==================================================
+===========================================================================
 ```
 
 ---
 
 ## 📄 Technical Summary
 
-See `AIDA_2157_-_Final_Project_-_Logic.pdf` for the full writeup covering:
+See `Logic_and_Ethics_Questions.pdf` for the full writeup covering:
 
 - **Model Comparison** — Logistic Regression vs. Random Forest for Road Closure prediction
 - **Ethics** — Implications of a False Negative in Major Fire classification
